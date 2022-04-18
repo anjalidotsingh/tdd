@@ -12,31 +12,37 @@ type Bond struct {
 	Price      string
 }
 
-func calculateTotalPrices(bonds []Bond) (string, error) {
+func CalculateTotalPrices(bonds []Bond) (string, error) {
 	var totalBondsPrice float64
 	for _, bond := range bonds {
-		denomination, unit, _ := strings.Cut(bond.Price, currencyDenonimationUnitSeparator())
-		if unit != "USD" {
-			temp, err := convertToUSD(bond.Price)
-			if err != nil {
-				return "", fmt.Errorf("exchange rate for %s is not available", unit)
-			}
-			denomination, _, _ = strings.Cut(temp, currencyDenonimationUnitSeparator())
+		denomination, err := convertCurrencyToDefaultUnit(bond.Price)
+		if err != nil {
+			return "", err
 		}
-		denominationInFloat, _ := strconv.ParseFloat(denomination, 64)
-		totalBondsPrice += denominationInFloat * float64(bond.Shares)
+		totalBondsPrice += denomination * float64(bond.Shares)
 	}
-	return fmt.Sprintf("%s USD", strconv.FormatFloat(totalBondsPrice, 'f', -1, 64)), nil
+	return fmt.Sprintf("%s %s", strconv.FormatFloat(totalBondsPrice, 'f', -1, 64), getDefaultCurrencyUnit()), nil
 }
 
-func convertToUSD(currency string) (string, error) {
-	denomination, unit, _ := strings.Cut(currency, currencyDenonimationUnitSeparator())
-	denominationInFloat, _ := strconv.ParseFloat(denomination, 64)
-	exchangeRate := exchangeRateForUSD(unit)
-	if isExchangeRateNotAvailable(exchangeRate) {
-		return "", fmt.Errorf("exchange rate for %s is not available", unit)
+func convertCurrencyToDefaultUnit(currency string) (float64, error) {
+	denominationInString, unit, _ := strings.Cut(currency, currencyDenonimationUnitSeparator())
+	denomination, err := strconv.ParseFloat(denominationInString, 64)
+	if unit == getDefaultCurrencyUnit() {
+		return denomination, err
 	}
-	return fmt.Sprintf("%s USD", strconv.FormatFloat(denominationInFloat*exchangeRate, 'f', -1, 64)), nil
+	denomination, err = ConvertToUSD(denomination, unit)
+	if err != nil {
+		return denomination, err
+	}
+	return denomination, err
+}
+
+func ConvertToUSD(denomination float64, unit string) (float64, error) {
+	exchangeRate := exchangeRateForUSD(unit)
+	if !isExchangeRateAvailable(exchangeRate) {
+		return 0, fmt.Errorf("exchange rate for %s is not available", unit)
+	}
+	return denomination * exchangeRate, nil
 }
 
 func currencyDenonimationUnitSeparator() string {
@@ -52,6 +58,10 @@ func exchangeRateForUSD(currencyUnit string) float64 {
 	return exchangeRateForUSDMap[currencyUnit]
 }
 
-func isExchangeRateNotAvailable(exchangeRate float64) bool {
-	return exchangeRate == 0
+func isExchangeRateAvailable(exchangeRate float64) bool {
+	return exchangeRate != 0
+}
+
+func getDefaultCurrencyUnit() string {
+	return "USD"
 }
